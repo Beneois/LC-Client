@@ -1,0 +1,107 @@
+﻿@page "/home"
+@inject HttpClient Http
+@inject NavigationManager Nav
+@using Models  
+@inject  UserSession Session
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>My Study Progress</h3>
+        @if (Session.IsLoggedIn)
+        {
+            <span class="badge bg-secondary">User: @Session.UserName</span>
+        }
+    </div>
+
+    @if (progressList == null)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2"><em>Loading your stats...</em></p>
+        </div>
+    }
+    else if (!progressList.Any())
+    {
+        <div class="alert alert-warning">No word sets found.</div>
+    }
+    else
+    {
+        @foreach (var item in progressList)
+        {
+            <div class="card mb-3 shadow-sm border-0 bg-light">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">@item.Name</h5>
+                        <small class="text-muted">@item.KnownWords / @item.TotalWords Words</small>
+                    </div>
+
+                    <div class="progress mb-3" style="height: 15px;">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width: @(item.Percentage)%;">
+                            @item.Percentage%
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <div style="width: 140px;" class="me-2">
+                            <button class="btn btn-lg btn-outline-primary w-100 py-3"
+                                    @onclick="() => StartReview(item.Id)">
+                                Review
+                            </button>
+                        </div>
+
+                        <div style="width: 140px;">
+                            <button class="btn btn-lg btn-primary w-100 py-3"
+                                    @onclick="() => StartTest(item.Id)">
+                                Test
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<ProgressPair>? progressList;
+
+    public class ProgressPair
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public double Percentage { get; set; }
+        public int TotalWords { get; set; }
+        public int KnownWords { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if the user is logged in
+        if (!Session.IsLoggedIn)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        try
+        {
+            // Dynamically fetch progress using the Session ID instead of hardcoded '1'
+            progressList = await Http.GetFromJsonAsync<List<ProgressPair>>($"api/user/{Session.UserId}/progress");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading progress: {ex.Message}");
+        }
+    }
+
+    private void StartReview(int id)
+    {
+        Nav.NavigateTo($"/review/{id}");
+    }
+
+    private void StartTest(int id)
+    {
+        Nav.NavigateTo($"/test/{id}");
+    }
+}

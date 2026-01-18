@@ -1,0 +1,155 @@
+﻿@page "/test/{WordSetId:int}"
+@page "/test/{WordSetId:int}/{Count:int}"
+@using LC.Client.Models
+@inject HttpClient Http
+@inject UserSession Session
+@inject NavigationManager Nav
+
+<div class="container mt-4" style="max-width: 500px;">
+    @if (questions == null)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2">Preparing your test...</p>
+        </div>
+    }
+    else if (questions.Count == 0)
+    {
+        <div class="alert alert-warning text-center mt-5">
+            <h4>No Questions Found</h4>
+            <p>This word set seems to be empty or has no translations.</p>
+            <button class="btn btn-primary mt-3" @onclick='() => Nav.NavigateTo("/home")'>Back to Home</button>
+        </div>
+    }
+    else if (isFinished)
+    {
+        <div class="card shadow p-5 text-center border-0">
+            <h2 class="mb-3">Test Finished!</h2>
+            <p class="display-4 mb-4">@score / @questions.Count</p>
+            <button class="btn btn-primary btn-lg w-100" @onclick='() => Nav.NavigateTo("/home")'>Return Home</button>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between mb-2">
+            <span>Question @(currentIndex + 1) of @questions.Count</span>
+            <span class="fw-bold">Score: @score</span>
+        </div>
+
+        <div class="card shadow-sm p-4 mb-4 border-0 bg-light">
+            <h1 class="text-center display-3 my-4">@Current.QuestionText</h1>
+
+            <div class="list-group">
+                @foreach (var choice in Current.Choices)
+                {
+                    <button type="button"
+                            class="list-group-item list-group-item-action mb-2 rounded border @GetButtonClass(choice)"
+                            @onclick="() => SelectAnswer(choice)"
+                            disabled="@Current.IsAnswered">
+                        @choice
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (Current.IsAnswered)
+        {
+            <button class="btn btn-dark btn-lg w-100 py-3" @onclick="GoNext">
+                @(currentIndex == questions.Count - 1 ? "Finish" : "Next →")
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int WordSetId { get; set; }
+    [Parameter] public int Count { get; set; } = 10;
+
+    private List<QuizQuestion>? questions;
+    private int currentIndex = 0;
+    private int score = 0;
+    private bool isFinished = false;
+
+    private QuizQuestion Current => questions![currentIndex];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Count <= 0)
+        {
+            Count = 10;
+        }
+        // Request uses the parameters provided by the client
+        var response = await Http.GetFromJsonAsync<List<TestQuestionDto>>($"api/test/{WordSetId}/{Count}");
+
+        // If the URL didn't provide a count (it's 0), set it to 10
+
+
+        if (response != null)
+        {
+            // Mapping from the incoming DTO to your LC.Client.Models.QuizQuestion
+            questions = response.Select(dto => new QuizQuestion
+            {
+                WordId = dto.WordId,
+                QuestionText = dto.QuestionText,
+                CorrectAnswer = dto.CorrectAnswer,
+                Choices = dto.Choices
+            }).ToList();
+        }
+    }
+
+    private async Task SelectAnswer(string choice)
+    {
+        // 1. Mark the answer locally so the UI updates (colors change, buttons disable)
+        Current.SelectedChoice = choice;
+        if (Current.IsCorrect) score++;
+
+        // 2. Prepare the result package for the API
+        var result = new
+        {
+            UserId = Session.UserId,
+            WordId = Current.WordId,
+            IsCorrect = Current.IsCorrect
+        };
+
+        // 3. Send the result immediately to the database
+        try
+        {
+            await Http.PostAsJsonAsync("api/test/result", result);
+        }
+        catch (Exception ex)
+        {
+            // This logs to the browser console if the save fails
+            Console.WriteLine($"Error saving progress: {ex.Message}");
+        }
+    }
+
+    private void GoNext()
+    {
+        if (currentIndex < questions!.Count - 1)
+        {
+            currentIndex++;
+        }
+        else
+        {
+            isFinished = true;
+        }
+    }
+
+    private string GetButtonClass(string choice)
+    {
+        if (!Current.IsAnswered) return "";
+        if (choice == Current.CorrectAnswer) return "bg-success text-white border-success";
+        if (choice == Current.SelectedChoice && !Current.IsCorrect) return "bg-danger text-white border-danger";
+        return "opacity-50";
+    }
+
+    // Local DTO to represent the API contract without referencing the API project
+    public class TestQuestionDto
+    {
+        public int WordId { get; set; }
+        public string QuestionText { get; set; } = "";
+        public string CorrectAnswer { get; set; } = "";
+        public List<string> Choices { get; set; } = new();
+    }
+
+}
