@@ -1,0 +1,36 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-to-github-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish app
+        run: dotnet publish LC.Client.csproj -c Release -o release --nologo
+      - name: Change base-tag in index.html from / to LC-Client
+        run: sed -i 's/<base href="\/" \/>/<base href="\/LC-Client\/" \/>/g' release/wwwroot/index.html
+      - name: Upload static files to GitHub Pages
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: release/wwwroot
+  deploy:
+    needs: deploy-to-github-pages
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
